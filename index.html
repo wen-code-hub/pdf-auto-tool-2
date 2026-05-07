@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 課程補助自動核定系統 - Pro v6.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body { background-color: #f8fafc; color: #1e293b; font-family: 'Inter', 'PingFang TC', sans-serif; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .drop-zone { border: 2px dashed #cbd5e1; transition: all 0.3s ease; }
+        .drop-zone.drag-over { border-color: #0d9488; background-color: #f0fdfa; transform: scale(1.02); }
+        .scroll-custom::-webkit-scrollbar { width: 6px; }
+        .scroll-custom::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
+    </style>
+</head>
+<body class="min-h-screen flex">
+
+    <aside class="w-72 bg-slate-900 text-white flex flex-col sticky top-0 h-screen shrink-0 overflow-hidden">
+        <div class="p-6 flex flex-col h-full">
+            <div class="flex items-center space-x-3 mb-10">
+                <div class="bg-teal-500 p-2 rounded-xl text-xl shadow-lg shadow-teal-500/20">⚡</div>
+                <h1 class="text-lg font-extrabold tracking-tight">AutoVerify Pro</h1>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto scroll-custom pr-2">
+                <div class="text-[10px] uppercase tracking-widest text-slate-500 font-bold px-2 mb-4">待辨識檔案隊列</div>
+                <div id="file-queue-container" class="space-y-3">
+                    <div class="text-center py-10 text-slate-500 italic text-xs">尚未載入資料夾...</div>
+                </div>
+            </div>
+
+            <div class="mt-auto pt-6 border-t border-slate-800 text-[10px] text-slate-500">
+                <p>System Status: Ready</p>
+                <p>Engine: Gemini 1.5 Flash</p>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-grow flex flex-col min-w-0 h-screen overflow-y-auto scroll-custom">
+        <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-30">
+            <div>
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-widest">批次作業控制中心</h2>
+                <p id="current-task-name" class="text-[10px] text-teal-600 font-medium"></p>
+            </div>
+            <div class="flex space-x-4">
+                <div class="bg-slate-50 px-5 py-2 rounded-2xl border border-slate-100 text-center min-w-[100px]">
+                    <span class="text-[9px] text-slate-400 block font-bold uppercase">檔案總數</span>
+                    <span id="stat-queue" class="text-sm font-black text-slate-700">0</span>
+                </div>
+                <div class="bg-teal-50 px-5 py-2 rounded-2xl border border-teal-100 text-center min-w-[100px]">
+                    <span class="text-[9px] text-teal-600 block font-bold uppercase">辨識成功</span>
+                    <span id="stat-done" class="text-sm font-black text-teal-700">0</span>
+                </div>
+                <button id="btn-export" class="hidden px-6 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition-all shadow-lg active:scale-95">
+                    匯出 Excel 總表
+                </button>
+            </div>
+        </header>
+
+        <div class="p-8 max-w-6xl mx-auto w-full space-y-8 animate-fadeIn">
+            
+            <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div id="tpl-drop" class="glass-card p-6 rounded-3xl shadow-sm drop-zone cursor-pointer group hover:shadow-md transition-all">
+                    <h3 class="font-bold text-slate-700 mb-4 flex items-center text-sm">
+                        <span class="bg-amber-100 text-amber-600 px-2 py-0.5 rounded mr-2 text-[10px]">STEP 1</span>
+                        載入 Excel 範本
+                    </h3>
+                    <div class="text-center py-6">
+                        <div class="text-4xl group-hover:scale-110 transition-transform mb-3">📋</div>
+                        <p id="tpl-info" class="text-xs text-slate-400">點擊或拖放 Excel 決定欄位結構</p>
+                        <input type="file" id="tpl-input" class="hidden" accept=".xlsx,.xls">
+                    </div>
+                </div>
+
+                <div id="dir-drop" class="glass-card p-6 rounded-3xl shadow-sm drop-zone cursor-pointer group hover:shadow-md transition-all">
+                    <h3 class="font-bold text-slate-700 mb-4 flex items-center text-sm">
+                        <span class="bg-teal-100 text-teal-600 px-2 py-0.5 rounded mr-2 text-[10px]">STEP 2</span>
+                        上傳申請資料夾
+                    </h3>
+                    <div class="text-center py-6">
+                        <div class="text-4xl group-hover:scale-110 transition-transform mb-3">📂</div>
+                        <p id="dir-info" class="text-xs text-slate-400">選擇包含 PDF 或圖片的資料夾</p>
+                        <input type="file" id="dir-input" class="hidden" webkitdirectory directory multiple>
+                    </div>
+                </div>
+            </section>
+
+            <section class="glass-card p-8 rounded-[2rem] border-indigo-100 bg-gradient-to-br from-indigo-50/40 to-white shadow-xl shadow-indigo-500/5">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-8">
+                    <div class="flex items-center space-x-5">
+                        <div class="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg shadow-indigo-200 text-xl">🔑</div>
+                        <div>
+                            <h3 class="font-bold text-indigo-900 text-base">AI 引擎密鑰配置</h3>
+                            <p class="text-xs text-indigo-500">輸入 API Key 後啟動全自動辨識任務</p>
+                        </div>
+                    </div>
+                    <div class="flex-grow max-w-lg">
+                        <input type="password" id="api-key" placeholder="在此輸入您的 Gemini API Key..." 
+                            class="w-full bg-white border border-indigo-200 rounded-2xl px-6 py-4 text-sm focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all shadow-sm font-mono tracking-wider">
+                    </div>
+                </div>
+
+                <div id="batch-control" class="hidden mt-10 pt-8 border-t border-indigo-100/50">
+                    <div class="flex justify-between items-end mb-6">
+                        <div>
+                            <h3 class="font-extrabold text-slate-800 text-lg">批次執行進度</h3>
+                            <p class="text-xs text-slate-500 mt-1">就緒檔案: <span id="ready-count" class="font-bold text-indigo-600">0</span> | 已完成: <span id="processed-count" class="font-bold text-teal-600">0</span></p>
+                        </div>
+                        <button id="btn-start-batch" class="px-10 py-4 bg-teal-600 text-white text-sm font-black rounded-2xl hover:bg-teal-700 shadow-xl shadow-teal-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                            <span>🚀 啟動 AI 批次辨識</span>
+                        </button>
+                    </div>
+                    <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden shadow-inner">
+                        <div id="batch-progress" class="bg-gradient-to-r from-teal-400 to-teal-600 h-full w-0 transition-all duration-700 ease-out"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden min-h-[600px] flex flex-col">
+                <div class="bg-slate-50/50 px-8 py-5 border-b border-slate-100 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700 flex items-center">
+                        <span class="mr-3 text-lg">🔍</span> 資料校對與編輯 
+                        <span id="editing-filename" class="ml-4 text-xs font-medium text-slate-400 bg-slate-200/50 px-3 py-1 rounded-full"></span>
+                    </h3>
+                </div>
+                
+                <div id="workspace-content" class="flex-grow p-10">
+                    <div id="ws-placeholder" class="h-full flex flex-col items-center justify-center text-slate-300 space-y-6 py-20">
+                        <div class="text-8xl opacity-10">🤖</div>
+                        <div class="text-center">
+                            <p class="text-sm font-bold text-slate-400">尚未選擇檔案</p>
+                            <p class="text-xs text-slate-300 mt-2">請先完成辨識，並點擊左側清單中的檔案進行校對</p>
+                        </div>
+                    </div>
+                    
+                    <div id="edit-form" class="hidden animate-fadeIn">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6" id="form-grid">
+                            <!-- 動態生成的輸入欄位 -->
+                        </div>
+                        <div class="mt-12 pt-8 border-t border-slate-100 flex justify-end">
+                            <button id="btn-save" class="px-12 py-4 bg-slate-900 text-white text-sm font-black rounded-2xl hover:bg-black shadow-2xl transition-all active:scale-95">
+                                💾 儲存並確認此筆
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const state = {
+            templateHeaders: [],
+            fileQueue: [], 
+            isProcessing: false,
+            currentEditIdx: -1
+        };
+
+        let dom = {};
+
+        function initDom() {
+            dom = {
+                tplInput: document.getElementById('tpl-input'),
+                dirInput: document.getElementById('dir-input'),
+                tplDrop: document.getElementById('tpl-drop'),
+                dirDrop: document.getElementById('dir-drop'),
+                fileQueueContainer: document.getElementById('file-queue-container'),
+                batchControl: document.getElementById('batch-control'),
+                batchProgress: document.getElementById('batch-progress'),
+                btnStartBatch: document.getElementById('btn-start-batch'),
+                wsPlaceholder: document.getElementById('ws-placeholder'),
+                editForm: document.getElementById('edit-form'),
+                formGrid: document.getElementById('form-grid'),
+                statQueue: document.getElementById('stat-queue'),
+                statDone: document.getElementById('stat-done'),
+                apiKey: document.getElementById('api-key'),
+                btnExport: document.getElementById('btn-export'),
+                editingFilename: document.getElementById('editing-filename'),
+                readyCount: document.getElementById('ready-count'),
+                processedCount: document.getElementById('processed-count')
+            };
+        }
+
+        async function handleExcel(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(sheet, {header: 1});
+                state.templateHeaders = json[0] || [];
+                document.getElementById('tpl-info').innerText = `已載入: ${file.name}`;
+                document.getElementById('tpl-info').classList.add('text-teal-600', 'font-bold');
+                showToast("✅ 範本載入成功，共有 " + state.templateHeaders.length + " 個欄位");
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function handleFiles(fileList) {
+            const files = Array.from(fileList).filter(f => 
+                f.type.includes('pdf') || f.type.includes('image') || 
+                f.name.toLowerCase().endsWith('.pdf') || 
+                f.name.toLowerCase().endsWith('.jpg') || 
+                f.name.toLowerCase().endsWith('.png')
+            );
+            
+            if (files.length === 0) {
+                showToast("⚠️ 未偵測到有效的 PDF 或圖片檔案");
+                return;
+            }
+
+            state.fileQueue = files.map(f => ({ file: f, status: 'pending', data: {}, error: null }));
+            
+            dom.statQueue.innerText = state.fileQueue.length;
+            dom.readyCount.innerText = state.fileQueue.length;
+            dom.batchControl.classList.remove('hidden');
+            document.getElementById('dir-info').innerText = `已載入 ${files.length} 個檔案`;
+            document.getElementById('dir-info').classList.add('text-teal-600', 'font-bold');
+            renderQueue();
+            showToast(`📂 成功載入 ${files.length} 個檔案`);
+        }
+
+        async function runGeminiAI(file, apiKey, headers) {
+            const toBase64 = f => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(f);
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = e => reject(e);
+            });
+
+            try {
+                const base64Data = await toBase64(file);
+                const prompt = `你是一個專業行政助手。請仔細辨識這張申請表內容。
+                請將內容對應到以下欄位：${headers.join(', ')}。
+                請嚴格輸出 JSON 格式。如果找不到資訊，請填寫空字串。
+                JSON 的 Key 必須與上述欄位名稱完全一致。
+                不要輸出任何 Markdown 語法或解釋文字。`;
+
+                const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { inlineData: { mimeType: mimeType, data: base64Data } }
+                            ]
+                        }],
+                        generationConfig: { 
+                            responseMimeType: "application/json",
+                            temperature: 0.1
+                        }
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error?.message || "API 請求失敗");
+                }
+
+                const resData = await response.json();
+                let text = resData.candidates[0].content.parts[0].text;
+                text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                return JSON.parse(text);
+            } catch (e) {
+                console.error("AI 錯誤:", e);
+                throw e;
+            }
+        }
+
+        function renderQueue() {
+            if (state.fileQueue.length === 0) {
+                dom.fileQueueContainer.innerHTML = `<div class="text-center py-10 text-slate-500 italic text-xs">尚未載入資料夾...</div>`;
+                return;
+            }
+
+            dom.fileQueueContainer.innerHTML = state.fileQueue.map((item, idx) => `
+                <div onclick="selectFile(${idx})" class="group flex items-center justify-between p-4 bg-slate-800/40 border border-slate-700/50 rounded-2xl cursor-pointer hover:bg-slate-800 transition-all ${state.currentEditIdx === idx ? 'ring-2 ring-teal-500 border-transparent bg-slate-800 shadow-lg' : ''}">
+                    <div class="flex items-center space-x-3 overflow-hidden">
+                        <div class="w-8 h-8 flex items-center justify-center bg-slate-700 rounded-xl text-sm">
+                            ${item.file.name.toLowerCase().endsWith('.pdf') ? '📕' : '🖼️'}
+                        </div>
+                        <div class="overflow-hidden">
+                            <p class="text-[10px] font-bold text-slate-200 truncate">${item.file.name}</p>
+                            <p class="text-[9px] ${item.status === 'error' ? 'text-red-400' : 'text-slate-500'} font-medium">
+                                ${getStatusText(item)}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="ml-2">${getStatusIcon(item.status)}</div>
+                </div>
+            `).join('');
+        }
+
+        function getStatusText(item) {
+            if (item.status === 'pending') return '等待處理';
+            if (item.status === 'processing') return '正在辨識...';
+            if (item.status === 'done') return '完成';
+            if (item.status === 'error') return '錯誤';
+            return '';
+        }
+
+        function getStatusIcon(status) {
+            if (status === 'pending') return `<div class="w-1.5 h-1.5 rounded-full bg-slate-600"></div>`;
+            if (status === 'processing') return `<div class="h-3 w-3 border-2 border-teal-500 border-t-transparent rounded-full animate-spin"></div>`;
+            if (status === 'error') return `<span class="text-red-400 font-bold text-xs">!</span>`;
+            return `<span class="text-teal-400 font-bold text-xs">✓</span>`;
+        }
+
+        window.selectFile = (idx) => {
+            const item = state.fileQueue[idx];
+            if (item.status !== 'done' && item.status !== 'error') { 
+                showToast("⏳ 請等待辨識完成"); 
+                return; 
+            }
+
+            state.currentEditIdx = idx;
+            dom.wsPlaceholder.classList.add('hidden');
+            dom.editForm.classList.remove('hidden');
+            dom.editingFilename.innerText = item.file.name;
+            
+            let html = "";
+            state.templateHeaders.forEach(h => {
+                const value = item.data[h] || "";
+                html += `
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">${h}</label>
+                        <input type="text" data-key="${h}" value="${value}" 
+                            class="w-full border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-semibold focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500 outline-none transition-all bg-slate-50/50">
+                    </div>
+                `;
+            });
+            dom.formGrid.innerHTML = html || `<p class="col-span-2 text-center text-slate-400 py-20">無可用欄位</p>`;
+            renderQueue();
+        };
+
+        window.onload = () => {
+            initDom();
+
+            dom.tplDrop.onclick = () => dom.tplInput.click();
+            dom.dirDrop.onclick = () => dom.dirInput.click();
+            dom.tplInput.onchange = (e) => handleExcel(e.target.files[0]);
+            dom.dirInput.onchange = (e) => handleFiles(e.target.files);
+
+            [dom.tplDrop, dom.dirDrop].forEach(zone => {
+                zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('drag-over'); });
+                zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+                zone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    zone.classList.remove('drag-over');
+                    const files = e.dataTransfer.files;
+                    if (zone.id === 'tpl-drop') handleExcel(files[0]);
+                    else handleFiles(files);
+                });
+            });
+
+            dom.btnStartBatch.onclick = async () => {
+                const key = dom.apiKey.value.trim();
+                if (!key) { showToast("⚠️ 請輸入 API Key"); return; }
+                if (state.templateHeaders.length === 0) { showToast("⚠️ 請先載入範本"); return; }
+                if (state.isProcessing) return;
+
+                state.isProcessing = true;
+                dom.btnStartBatch.disabled = true;
+                
+                let doneCount = 0;
+                for (let i = 0; i < state.fileQueue.length; i++) {
+                    if (state.fileQueue[i].status === 'done') { doneCount++; continue; }
+                    
+                    state.fileQueue[i].status = 'processing';
+                    renderQueue();
+
+                    try {
+                        const result = await runGeminiAI(state.fileQueue[i].file, key, state.templateHeaders);
+                        state.fileQueue[i].data = result;
+                        state.fileQueue[i].status = 'done';
+                    } catch (e) {
+                        state.fileQueue[i].status = 'error';
+                        state.fileQueue[i].error = e.message;
+                    }
+
+                    doneCount++;
+                    dom.batchProgress.style.width = `${(doneCount / state.fileQueue.length) * 100}%`;
+                    dom.statDone.innerText = state.fileQueue.filter(f => f.status === 'done').length;
+                    dom.processedCount.innerText = doneCount;
+                    renderQueue();
+
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                }
+
+                state.isProcessing = false;
+                dom.btnStartBatch.disabled = false;
+                dom.btnExport.classList.remove('hidden');
+                showToast("✅ 批次處理作業完畢！");
+            };
+
+            document.getElementById('btn-save').onclick = () => {
+                if (state.currentEditIdx === -1) return;
+                const newData = {};
+                dom.formGrid.querySelectorAll('input').forEach(input => {
+                    newData[input.dataset.key] = input.value;
+                });
+                state.fileQueue[state.currentEditIdx].data = newData;
+                showToast("💾 校對結果已儲存");
+            };
+
+            dom.btnExport.onclick = () => {
+                const finalData = state.fileQueue.map(i => i.data);
+                const ws = XLSX.utils.json_to_sheet(finalData, { header: state.templateHeaders });
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "AI核定結果");
+                XLSX.writeFile(wb, `課程補助核定表_${new Date().getTime()}.xlsx`);
+                showToast("📥 Excel 下載成功");
+            };
+        };
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = "fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-10 py-4 rounded-2xl text-xs font-bold shadow-2xl z-[100] transition-all transform animate-fadeIn border border-slate-700";
+            toast.innerText = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => { 
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
