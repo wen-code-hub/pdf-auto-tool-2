@@ -238,11 +238,24 @@
 
             try {
                 const base64Data = await toBase64(file);
-                const prompt = `你是一個專業行政助手。請仔細辨識這張申請表內容。
-                請將內容對應到以下欄位：${headers.join(', ')}。
-                請嚴格輸出 JSON 格式。如果找不到資訊，請填寫空字串。
+                const filteredHeaders = headers.filter(h => h !== "序號" && h !== "歸檔名稱");
+
+                const prompt = `你是一個專業行政助手。請仔細辨識這份課程補助申請表內容。
+
+                請將內容對應到以下欄位：
+                ${filteredHeaders.join(', ')}
+
+                特別注意：
+                1. 「課程代碼」可能出現在課程名稱附近、課程資訊表格中，請仔細找。
+                2. 「核定人事費」可能出現在經費、補助金額、核定金額、人事費欄位附近。
+                3. 「核定業務費」可能出現在經費、補助金額、核定金額、業務費欄位附近。
+                4. 如果欄位名稱不同但意思相同，也請對應填入。
+                5. 金額請只填數字，不要加逗號、元、NT$。
+                6. 如果真的找不到資訊，才填空字串。
+
+                請嚴格輸出 JSON 格式。
                 JSON 的 Key 必須與上述欄位名稱完全一致。
-                不要輸出任何 Markdown 語法或解釋文字。`;
+                不要輸出 Markdown，不要解釋。`;
 
                 const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
 
@@ -399,7 +412,18 @@
                     renderQueue();
 
                     try {
-                        const result = await runGeminiAI(state.fileQueue[i].file, key, state.templateHeaders);
+                        const result = await runGeminiAI(
+                            state.fileQueue[i].file,
+                            key,
+                            state.templateHeaders
+                        );
+
+                        // 序號自動依照檔案順序編號
+                        result["序號"] = i + 1;
+
+                        // 歸檔名稱自動填入 PDF / 圖片檔案名稱
+                        result["歸檔名稱"] = state.fileQueue[i].file.name;
+
                         state.fileQueue[i].data = result;
                         state.fileQueue[i].status = 'done';
                     } catch (e) {
