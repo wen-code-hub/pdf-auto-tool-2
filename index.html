@@ -269,18 +269,26 @@
 
                 
                 const resData = await response.json();
+                console.log("Gemini 完整回傳：", resData);
+
                 let text = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                console.log("AI 原始輸出：", text);
 
                 text = text
                 .replace(/```json/g, '')
                 .replace(/```/g, '')
                 .trim();
 
+                const match = text.match(/\{[\s\S]*\}/);
+
+                if (!match) {
+                    throw new Error("AI 沒有回傳 JSON：" + text);
+                }
+
                 try {
-                    return JSON.parse(text);
-                } catch {
-                    console.log("AI 原始輸出:", text);
-                    return {};
+                    return JSON.parse(match[0]);
+                } catch (e) {
+                    throw new Error("AI 回傳的 JSON 格式錯誤：" + text);
                 }
                     } catch (e) {
                         console.error("AI 錯誤:", e);
