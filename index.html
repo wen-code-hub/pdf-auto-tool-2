@@ -444,6 +444,10 @@
                                 result["核定人事費"] = result["教學助理"];
                             }
                         }
+                        // 人事編號補救
+                        if ((!result["人事編號"] || result["人事編號"] === "") && result["人事代碼"]) {
+                            result["人事編號"] = result["人事代碼"];
+                        }
 
                         // 核定業務費補救
                         if (!result["核定業務費"] || result["核定業務費"] === "") {
@@ -486,15 +490,9 @@
 
             dom.btnExport.onclick = () => {
                 const finalData = state.fileQueue.map(i => i.data);
-                const exportHeaders = [...new Set([
-                    ...state.templateHeaders,
-                    "教學助理",
-                    "講員費"
-                ])];
-
                 const ws = XLSX.utils.json_to_sheet(finalData, {
-                    header: exportHeaders
-                });
+                     header: state.templateHeaders
+                 });
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "AI核定結果");
                 XLSX.writeFile(wb, `課程補助核定表_${new Date().getTime()}.xlsx`);
