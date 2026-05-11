@@ -429,6 +429,19 @@
 
                         // 歸檔名稱自動填入 PDF / 圖片檔案名稱
                         result["歸檔名稱"] = state.fileQueue[i].file.name;
+                        // 把沒有換行的欄位名稱，對應回 Excel 原本欄位
+                        const headerMap = {};
+                        state.templateHeaders.forEach(h => {
+                            const clean = String(h).replace(/\s+/g, "");
+                            headerMap[clean] = h;
+                        });
+
+                        function putToTemplate(cleanKey, value) {
+                            const realKey = headerMap[cleanKey];
+                            if (realKey && value !== undefined && value !== null && value !== "") {
+                                result[realKey] = value;
+                            }
+                        }
 
                         // 人事代碼補救
                         if (!result["人事代碼"] || result["人事代碼"] === "") {
@@ -455,6 +468,10 @@
                                 result["核定業務費"] = result["講員費"];
                             }
                         }
+
+                        putToTemplate("人事代碼", result["人事代碼"] || result["人事編號"]);
+                        putToTemplate("核定人事費", result["核定人事費"] || result["教學助理"]);
+                        putToTemplate("核定業務費", result["核定業務費"] || result["講員費"]);
 
                         state.fileQueue[i].data = result;
                         state.fileQueue[i].status = 'done';
@@ -489,15 +506,23 @@
             };
 
             dom.btnExport.onclick = () => {
-                const finalData = state.fileQueue.map(i => i.data);
-                const ws = XLSX.utils.json_to_sheet(finalData, {
-                     header: state.templateHeaders
-                 });
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "AI核定結果");
-                XLSX.writeFile(wb, `課程補助核定表_${new Date().getTime()}.xlsx`);
-                showToast("📥 Excel 下載成功");
-            };
+            const finalData = state.fileQueue.map(item => {
+                const row = {};
+                state.templateHeaders.forEach(h => {
+                    row[h] = item.data[h] ?? "";
+                });
+                return row;
+            });
+
+    const ws = XLSX.utils.json_to_sheet(finalData, {
+        header: state.templateHeaders
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "AI核定結果");
+    XLSX.writeFile(wb, `課程補助核定表_${new Date().getTime()}.xlsx`);
+    showToast("📥 Excel 下載成功");
+};
         };
 
         function showToast(msg) {
