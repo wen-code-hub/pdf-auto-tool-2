@@ -255,6 +255,10 @@
                 7. 金額請只填數字，不要加逗號、元、NT$。
                 8. 如果真的找不到資訊，才填空字串。
 
+                請特別額外輸出：
+                - 教學助理
+                - 講員費  
+
                 請嚴格輸出 JSON 格式。
                 JSON 的 Key 必須與上述欄位名稱完全一致。
                 不要輸出 Markdown，不要解釋。`;
@@ -426,6 +430,28 @@
                         // 歸檔名稱自動填入 PDF / 圖片檔案名稱
                         result["歸檔名稱"] = state.fileQueue[i].file.name;
 
+                        // 人事代碼補救
+                        if (!result["人事代碼"] || result["人事代碼"] === "") {
+                            const match = JSON.stringify(result).match(/"人事代碼"\s*:\s*"?(\d{5})"?/);
+                            if (match) {
+                                result["人事代碼"] = match[1];
+                            }
+                        }
+
+                        // 核定人事費補救
+                        if (!result["核定人事費"] || result["核定人事費"] === "") {
+                            if (result["教學助理"]) {
+                                result["核定人事費"] = result["教學助理"];
+                            }
+                        }
+
+                        // 核定業務費補救
+                        if (!result["核定業務費"] || result["核定業務費"] === "") {
+                            if (result["講員費"]) {
+                                result["核定業務費"] = result["講員費"];
+                            }
+                        }
+
                         state.fileQueue[i].data = result;
                         state.fileQueue[i].status = 'done';
                     } catch (e) {
@@ -460,7 +486,15 @@
 
             dom.btnExport.onclick = () => {
                 const finalData = state.fileQueue.map(i => i.data);
-                const ws = XLSX.utils.json_to_sheet(finalData, { header: state.templateHeaders });
+                const exportHeaders = [...new Set([
+                    ...state.templateHeaders,
+                    "教學助理",
+                    "講員費"
+                ])];
+
+                const ws = XLSX.utils.json_to_sheet(finalData, {
+                    header: exportHeaders
+                });
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "AI核定結果");
                 XLSX.writeFile(wb, `課程補助核定表_${new Date().getTime()}.xlsx`);
